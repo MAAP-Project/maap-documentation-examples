@@ -34,7 +34,7 @@ Authors: Alex Mandel and Chuck Daniels
 
 `setup.ipynb`
 
-- Takes approx. 10 seconds to download approx. 270 MB granule
+- Took 14.517 seconds to download a file of size 371,226,513 bytes (~25 MB/s)
 
 ## Subset
 
