@@ -15,7 +15,7 @@ Authors: Alex Mandel and Chuck Daniels
 
 ## CMR Query
 
-`[setup.ipynb](setup.ipynb)`
+[setup.ipynb](setup.ipynb)
 
 - 1009 granules matched a BBOX search of CMR (Initially discovered MAAP CMR had
   the collection BBOX for every granule, now fixed)
@@ -32,13 +32,13 @@ Authors: Alex Mandel and Chuck Daniels
 
 ## Download
 
-`[setup.ipynb](setup.ipynb)`
+[setup.ipynb](setup.ipynb)
 
 - Took 14.517 seconds to download a file of size 371,226,513 bytes (~25 MB/s)
 
 ## Subset
 
-`[subset.ipynb](subset.ipynb)`
+[subset.ipynb](subset.ipynb)
 
 ### Process
 
@@ -203,7 +203,7 @@ Subset points (0, 8)
 
 ## Combine
 
-`[combine.ipynb](combine.ipynb)`
+[combine.ipynb](combine.ipynb)
 
 ### Process
 
