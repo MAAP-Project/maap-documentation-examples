@@ -211,6 +211,14 @@ Subset points (0, 8)
 1. Read and append FlatGeobuf files into single GeoDataFrame
 1. Write combined result to new FlatGeobuf file
 
+After all FlatGeobuf files were generated (467 of them), using the steps above
+caused the ADE to crash, so instead, the following steps were taken:
+
+1. Find all FlatGeobuf files in a directory
+1. For each FlatGeobuf file, write/append it in `GPKG` format to a combined file
+
+This resulted in a 2.5G output file.
+
 ### Timing
 
 Combining 13 subsets resulted in a GeoDataFrame with 330309 rows.  Reading,
@@ -222,3 +230,6 @@ combine_subsets (/tmp/ipykernel_1618/2207665546.py:1):
 ```
 
 Combined file size: 82,798,032 bytes
+
+Combining all 467 `.fgb` files into a single `.gpkg` file (2.5G) took 4360
+seconds (~73 minutes).
