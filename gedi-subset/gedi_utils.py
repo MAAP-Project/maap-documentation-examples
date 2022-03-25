@@ -1,19 +1,30 @@
-# Chuck's Magic
-#
-
+import json
 import os
-from typing import Any, Callable, List, Mapping, Optional, Sequence, TypeVar
+import os.path
+from pathlib import Path
+from typing import Any, Callable, Iterable, Mapping, Optional, Sequence, Tuple, Type, TypeVar, Union
 
 import geopandas as gpd
+import h5py
+import numpy as np
 import pandas as pd
 import requests
-from returns.curry import curry
+from maap.maap import Granule
+from returns.curry import curry, partial
+from returns.functions import identity, tap
+from returns.io import impure_safe, IOFailure, IOResult, IOResultE, IOSuccess
+from returns.iterables import Fold
+from returns.pipeline import flow, pipe
+from returns.pointfree import bimap, bind_ioresult, map_
+from returns.result import Success
+from returns.unsafe import unsafe_perform_io
 
 _A = TypeVar('_A')
 _B = TypeVar('_B')
 _C = TypeVar('_C')
 _D = TypeVar('_D')
 _DF = TypeVar('_DF', bound=pd.DataFrame)
+_E = TypeVar('_E', bound=Exception)
 _T = TypeVar('_T')
 
 
@@ -24,14 +35,22 @@ def pprint(value: Any) -> None:
 # str -> str -> str
 @curry
 def chext(ext: str, path: str) -> str:
+    """Changes the extension of a path."""
     return f'{os.path.splitext(path)[0]}{ext}'
 
 
-# (_T -> None) -> Sequence _T -> None
+# (_T -> None) -> Iterable _T -> None
 @curry
-def for_each(f: Callable[[_T], None], xs: Sequence[_T]) -> None:
+def for_each(f: Callable[[_T], None], xs: Iterable[_T]) -> None:
+    """Applies a function to every element of an iterable."""
     for x in xs:
         f(x)
+
+
+# (_A -> bool) -> (_A -> _B) -> _A -> _A | _B
+@curry
+def when(pred: Callable[[_A], bool], f: Callable[[_A], _B], a: _A) -> Union[_A, _B]:
+    return f(a) if pred(a) else a
 
 
 # (_B -> _C -> _D) -> (_A -> _B) -> (_A -> _C) -> (_A -> _D)
@@ -39,8 +58,9 @@ def for_each(f: Callable[[_T], None], xs: Sequence[_T]) -> None:
 def converge(
     join: Callable[[_B], Callable[[_C], _D]],
     f: Callable[[_A], _B],
-    g: [[_A], _C]
+    g: Callable[[_A], _C],
 ) -> Callable[[_A], _D]:
+    """Returns a unary function that joins the output of 2 other functions."""
     def do_join(x: _A) -> _D:
         return join(f(x))(g(x))
 
@@ -51,6 +71,75 @@ def converge(
 @curry
 def df_assign(col_name: str, val: Any, df: _DF) -> _DF:
     return df.assign(**{col_name: val})
+
+
+@curry
+def append_message(extra_message: str, e: Exception) -> Exception:
+    message, *other_args = e.args if e.args else tuple("",)
+    new_message = f'{message}: {extra_message}' if message else extra_message
+    e.args = (new_message, *other_args)
+    
+    return e
+
+
+def granule_downloader(dest_dir: str, *, overwrite=False) -> Callable[[Granule], Optional[str]]:
+    os.makedirs(dest_dir, exist_ok=True)
+
+    def download_granule(granule: Granule) -> Optional[str]:
+        return granule.getData(dest_dir, overwrite)
+    
+    return download_granule
+    
+
+@curry
+def gdf_to_file(
+    file: Union[str, os.PathLike],
+    props: Mapping[str, Any],
+    gdf: gpd.GeoDataFrame
+) -> IOResultE[None]:
+    # Unfortunately, using mode='a' when the target file does not exist throws an
+    # exception rather than simply creating a new file.  Therefore, in that case, we
+    # switch to mode='w' to avoid the error.
+    mode = props.get('mode')
+    props = dict(props, mode='w' if mode == 'a' and not os.path.exists(file) else mode)
+    
+    return impure_safe(gdf.to_file)(file, **props).alt(
+        lambda e: e if f'{file}' in f'{e}' else append_message(f'writing to {file}')
+    )
+
+    
+@curry
+def append_gdf_file(
+    dest: Union[str, os.PathLike],
+    src: Union[str, os.PathLike]
+) -> IOResultE[None]:
+    return flow(
+        src,
+        impure_safe(gpd.read_file),
+        bind_ioresult(gdf_to_file(dest, {'mode': 'a', 'driver': 'GPKG'})),
+        bimap(
+            identity,
+            lambda e: e if f'{src}' in f'{e}' else append_message(f'source {src}')
+        ),
+    )
+
+
+@curry
+def combine_gdf_files(
+    dest: Union[str, os.PathLike],
+    srcs: Iterable[Union[str, os.PathLike]]
+) -> IOResultE[None]:
+    return flow(
+        srcs,
+        partial(map, append_gdf_file(dest)),
+        partial(map, IOResult.swap),
+        partial(Fold.collect_all, acc=IOSuccess(())),
+        bind_ioresult(
+            lambda errors: (
+                IOFailure(tuple(map(str, errors))) if len(errors) else IOSuccess(None)
+            )
+        ),
+    )
 
     
 def get_geo_boundary(iso: str, level: int) -> gpd.GeoDataFrame:
@@ -71,21 +160,20 @@ def get_geo_boundary(iso: str, level: int) -> gpd.GeoDataFrame:
     return gpd.read_file(file_path)
 
 
-def subset_gedi_granule(granule: str, aoi, filter_cols: List = ["lat_lowestmode", "lon_lowestmode"]):
+def subset_gedi_granule(
+    path: Union[str, os.PathLike],
+    aoi: gpd.GeoDataFrame,
+    filter_cols = ["lat_lowestmode", "lon_lowestmode"]
+) -> gpd.GeoDataFrame:
     """
     Subset a GEDI granule by a polygon in CRS 4326
-    granule = path to a granule h5 file that's already been downloaded
+    
+    path = path to a granule h5 file that's already been downloaded
     aoi = a shapely polygon of the aoi
     
-    return path to geojson output
+    return GeoDataFrame of granule subsetted to specified `aoi`
     """
-    infile = granule
-
-    hf_in = h5py.File(infile, 'r')
-
-    result = subset_h5(hf_in, aoi, filter_cols)
-
-    return result
+    return subset_h5(path, aoi, filter_cols)
 
 
 def spatial_filter(beam, aoi):
@@ -109,60 +197,65 @@ def spatial_filter(beam, aoi):
     return indices
 
 
-def subset_h5(hf_in, aoi, filter_cols):
+@curry
+def subset_h5(
+    path: Union[str, os.PathLike],
+    aoi: gpd.GeoDataFrame,
+    filter_cols: Sequence[str]
+) -> gpd.GeoDataFrame:
     """
     Extract the beam data only for the aoi and only columns of interest
     """
     subset_df = pd.DataFrame()
+    
+    with h5py.File(path, 'r') as hf_in:
+        # loop through BEAMXXXX groups
+        for v in list(hf_in.keys()):
+            if v.startswith('BEAM'):
+                col_names = []
+                col_val = []
+                beam = hf_in[v]
 
-    # loop through BEAMXXXX groups
-    for v in list(hf_in.keys()):
-        if v.startswith('BEAM'):
-            col_names = []
-            col_val = []
-            beam = hf_in[v]
+                indices = spatial_filter(beam, aoi)
 
-            indices = spatial_filter(beam, aoi)
+                # TODO: when to spatial subset?
+                for key, value in beam.items():
+                    # looping through subgroups
+                    if isinstance(value, h5py.Group):
+                        for key2, value2 in value.items():
+                            if (key2 not in filter_cols):
+                                continue
+                            if (key2 != "shot_number"):
+                                 # xvar variables have 2D
+                                if (key2.startswith('xvar')):
+                                    for r in range(4):
+                                        col_names.append(key2 + '_' + str(r+1))
+                                        col_val.append(value2[:, r][indices].tolist())
+                                else:
+                                    col_names.append(key2)
+                                    col_val.append(value2[:][indices].tolist())
 
-            # TODO: when to spatial subset?
-            for key, value in beam.items():
-                # looping through subgroups
-                if isinstance(value, h5py.Group):
-                    for key2, value2 in value.items():
-                        if (key2 not in filter_cols):
-                            continue
-                        if (key2 != "shot_number"):
-                             # xvar variables have 2D
-                            if (key2.startswith('xvar')):
-                                for r in range(4):
-                                    col_names.append(key2 + '_' + str(r+1))
-                                    col_val.append(value2[:, r][indices].tolist())
-                            else:
-                                col_names.append(key2)
-                                col_val.append(value2[:][indices].tolist())
-
-                #looping through base group
-                else:
-                    if (key not in filter_cols):
-                        continue
-                    # xvar variables have 2D
-                    if (key.startswith('xvar')):
-                        for r in range(4):
-                            col_names.append(key + '_' + str(r+1))
-                            col_val.append(value[:, r][indices].tolist())
-
+                    #looping through base group
                     else:
-                        col_names.append(key)
-                        col_val.append(value[:][indices].tolist())
+                        if (key not in filter_cols):
+                            continue
+                        # xvar variables have 2D
+                        if (key.startswith('xvar')):
+                            for r in range(4):
+                                col_names.append(key + '_' + str(r+1))
+                                col_val.append(value[:, r][indices].tolist())
 
-            # create a pandas dataframe
-            beam_df = pd.DataFrame(map(list, zip(*col_val)), columns=col_names)
-            # Inserting BEAM names
-            beam_df.insert(0, 'BEAM', np.repeat(str(v), len(beam_df.index)).tolist())
-            # Appending to the subset_df dataframe
-            subset_df = subset_df.append(beam_df)
+                        else:
+                            col_names.append(key)
+                            col_val.append(value[:][indices].tolist())
 
-    hf_in.close()
+                # create a pandas dataframe
+                beam_df = pd.DataFrame(map(list, zip(*col_val)), columns=col_names)
+                # Inserting BEAM names
+                beam_df.insert(0, 'BEAM', np.repeat(str(v), len(beam_df.index)).tolist())
+                # Appending to the subset_df dataframe
+                subset_df = subset_df.append(beam_df)
+
     # all_gdf = gpd.GeoDataFrame(subset_df, geometry=gpd.points_from_xy(subset_df.lon_lowestmode, subset_df.lat_lowestmode))
     all_gdf = gpd.GeoDataFrame(subset_df.loc[:,~subset_df.columns.isin(['lon_lowestmode', 'lat_lowestmode'])],
                                geometry=gpd.points_from_xy(subset_df.lon_lowestmode, subset_df.lat_lowestmode))
