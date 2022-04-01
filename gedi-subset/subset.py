@@ -1,29 +1,118 @@
 #!/usr/bin/env python
+import logging
 import multiprocessing
+import operator
 import os
 import os.path
-from functools import partial
+import warnings
 from pathlib import Path
-from typing import Optional, Tuple
+from typing import Any, Callable, Iterable, Mapping, Optional, Tuple, TypeVar
 
-import geopandas as gpd
 import typer
+from fp import K, filter, map
+from gedi_utils import append_gdf_file, chext, df_assign, granule_intersects, subset_h5
 from maap.maap import MAAP, Collection, Granule
-from returns.curry import curry
+from returns.curry import curry, partial
 from returns.functions import identity, raise_exception, tap
-from returns.io import impure_safe, IO, IOResultE, IOSuccess
-from returns.pipeline import flow, is_successful, pipe
-from returns.unsafe import unsafe_perform_io
+from returns.io import IO, IOFailure, IOResult, IOResultE, IOSuccess, impure_safe
 from returns.iterables import Fold
-from returns.pointfree import bind_ioresult, map_, lash
+from returns.maybe import Maybe, Nothing, Some
+from returns.methods import unwrap_or_failure
+from returns.pipeline import flow, is_successful, managed, pipe
+from returns.pointfree import bind_ioresult, bind_result, lash, map_
+from returns.result import Failure, Success, safe
+from returns.unsafe import unsafe_perform_io
 
-from gedi_utils import chext, append_gdf_file, df_assign, for_each, subset_h5, when
+# Suppress UserWarning: The Shapely GEOS version (3.10.2-CAPI-1.16.0) is incompatible
+# with the GEOS version PyGEOS was compiled with (3.8.1-CAPI-1.13.3). Conversions
+# between both will be slow.
+#  shapely_geos_version, geos_capi_version_string
+with warnings.catch_warnings():
+    warnings.simplefilter("ignore")
+    import geopandas as gpd
+
+
+logging.basicConfig(
+    level=logging.CRITICAL,  # Suppress ERRORs from fiona._env logger
+    format="%(asctime)s [%(processName)s:%(name)s] [%(levelname)s] %(message)s",
+)
+logger = logging.getLogger(__name__)
+
+
+def set_log_level(level: int):
+    global logger
+    logger.setLevel(level)
+
+
+@curry
+def find_collection(
+    maap: MAAP,
+    cmr_host: str,
+    params: Mapping[str, str],
+) -> IOResultE[Collection]:
+    return flow(
+        impure_safe(maap.searchCollection)(cmr_host=cmr_host, **dict(params, limit=1)),
+        bind_result(safe(operator.itemgetter(0))),
+        lash(K(IOFailure(ValueError(f"No collection found at {cmr_host}: {params}")))),
+    )
+
+
+def subset_granules(
+    aoi_gdf: gpd.GeoDataFrame,
+    output_directory: Path,
+    overwrite: bool,
+    log_level: int,
+    granules: Iterable[Granule],
+) -> IOResultE[Tuple[str, ...]]:
+    # Must declare nested function as global to allow multiprocessing to pickle it.
+    global process_granule
+
+    @impure_safe
+    def process_granule(granule: Granule) -> Maybe[str]:
+        filter_cols = [
+            "agbd",
+            "agbd_se",
+            "l4_quality_flag",
+            "sensitivity",
+            "lat_lowestmode",
+            "lon_lowestmode",
+        ]
+
+        logger.debug(f"Downloading granule {granule['Granule']['GranuleUR']}")
+        inpath = granule.getData(str(output_directory))
+        outpath = chext(".fgb", inpath)
+        logger.debug(f"Subsetting {inpath}")
+
+        if overwrite or not os.path.exists(outpath):
+            gdf = df_assign("filename", inpath, subset_h5(inpath, aoi_gdf, filter_cols))
+
+            if gdf.empty:
+                logger.debug(f"Subset of {inpath} is empty; not writing")
+                return Nothing
+
+            gdf.to_file(outpath, driver="FlatGeobuf")
+
+        return Some(outpath)
+
+    # Use half the CPUs available to this process (or at least 1 CPU)
+    processes = max(1, len(os.sched_getaffinity(0)) // 2)
+    # https://docs.python.org/3/library/multiprocessing.html#multiprocessing.pool.Pool.imap
+    chunksize = 10
+
+    logger.info(f"Subsetting on {processes} processes (chunksize={chunksize})")
+
+    with multiprocessing.Pool(processes, set_log_level, (log_level,)) as pool:
+        return flow(
+            pool.imap_unordered(process_granule, granules, chunksize),
+            filter(lambda result: unwrap_or_failure(result) != IO(Nothing)),
+            partial(Fold.collect, acc=IOSuccess(())),
+        )
 
 
 def main(
-    geojson: Path = typer.Option(
+    aoi: Path = typer.Option(
         ...,
-        help="Path to GeoJSON file (AOI)",
+        help="Area of Interest (path to GeoJSON file)",
         exists=True,
         file_okay=True,
         dir_okay=False,
@@ -34,102 +123,74 @@ def main(
     doi=typer.Option(
         # "10.3334/ORNLDAAC/1986",  # GEDI L4A DOI, v2
         "10.3334/ORNLDAAC/2056",  # GEDI L4A DOI, v2.1
-        help="DOI of collection to subset (https://www.doi.org/)",
+        help="Digital Object Identifier of collection to subset (https://www.doi.org/)",
     ),
     cmr_host=typer.Option(
         # "cmr.maap-project.org",  # Doesn't properly handle HTTPS fallback from S3
         "cmr.earthdata.nasa.gov",
         help="CMR hostname",
     ),
-    limit: int = typer.Option(  # Temporary, for testing w/o code changes
-        2,
+    limit: int = typer.Option(
+        10_000,
         help="Maximum number of granules to subset",
     ),
+    output_directory: Path = typer.Option(
+        f"{os.path.join(os.path.abspath(os.path.curdir), 'output')}",
+        "-d",
+        "--output-directory",
+        help="Output directory for generated subset file",
+        exists=False,
+        file_okay=False,
+        dir_okay=True,
+        writable=True,
+        readable=True,
+        resolve_path=True,
+    ),
+    overwrite: bool = typer.Option(
+        False,
+        help="Overwrite individual subset files",
+    ),
+    verbose: bool = typer.Option(False, help="Provide verbose output"),
 ) -> None:
-    # TODO: where's the correct destination?
-    subset_name, _ = os.path.splitext(os.path.basename(geojson))
-    dest_dir = Path("/") / "projects" / "tmp" / "subsets" / subset_name
-    dest = dest_dir / "subset.gpkg"
-    os.makedirs(dest_dir, exist_ok=True)
+    log_level = logging.DEBUG if verbose else logging.INFO
+    set_log_level(log_level)
+
+    os.makedirs(output_directory, exist_ok=True)
+    dest = output_directory / "gedi_subset.gpkg"
 
     # Remove existing combined subset file, primarily to support
     # testing.  When running in the context of a DPS job, there
     # should be no existing file since every job uses a unique
     # output directory.
-    if os.path.exists(dest):
-        os.remove(dest)
+    impure_safe(os.remove)(dest)
 
-    aoi = gpd.read_file(geojson)
     maap = MAAP("api.ops.maap-project.org")
-
-    collection = maap.searchCollection(cmr_host=cmr_host, doi=doi, limit=1)[0]
-    collection_name = collection["Collection"]["ShortName"]
-    collection_version = collection["Collection"]["VersionId"]
-
-    granules = maap.searchGranule(
-        cmr_host=cmr_host,
-        collection_concept_id=collection["concept-id"],
-        bounding_box=",".join(map(str, aoi.total_bounds)),
-        limit=limit,
-    )
-
-    typer.echo(
-        f"Found {len(granules)} granule(s) for DOI {doi} "
-        + f"({collection_name}, v{collection_version})"
-    )
-
-    filter_cols = [
-        "agbd",
-        "agbd_se",
-        "l4_quality_flag",
-        "sensitivity",
-        "lat_lowestmode",
-        "lon_lowestmode",
-    ]
-
-    # We must declare our nested function as global to allow
-    # multiprocessing to pickle it.
-    global subset_granule
-
-    @impure_safe
-    def subset_granule(granule: Granule) -> str:
-        typer.echo(f"Downloading granule {granule['Granule']['GranuleUR']}...")
-        inpath = granule.getData(str(dest_dir))
-        typer.echo(f"Finished downloading {inpath}")
-        typer.echo(f"Subsetting {inpath}...")
-        gdf = df_assign("filename", inpath, subset_h5(inpath, aoi, filter_cols))
-        outpath = chext(".fgb", inpath) if len(gdf.index) > 0 else ""
-
-        # Don't write empty DataFrame, otherwise we'll get an error:
-        # ValueError: Cannot write empty DataFrame to file.
-        if outpath:
-            gdf.to_file(outpath, driver="FlatGeobuf")
-            typer.echo(f"Finished subsetting {inpath} to {outpath}")
-        else:
-            typer.echo(f"Subset of {inpath} is empty; nothing written")
-
-        return outpath
-
-    # Use no more than half the CPUs available to this process
-    processes = min(len(granules), len(os.sched_getaffinity(0)) // 2)
-
-    # https://docs.python.org/3/library/multiprocessing.html#multiprocessing.pool.Pool.imap
-    # chunksize = max(1, round(len(granules) / processes))
-    chunksize = max(1, min(10, round(len(granules) / processes)))
-
-    typer.echo(f"Multiprocessing with {processes} processes (chunksize={chunksize})...")
-
-    with multiprocessing.Pool(processes) as pool:
-        result: IOResultE[None] = flow(
-            granules,
-            partial(pool.imap_unordered, subset_granule, chunksize=chunksize),
-            partial(filter, lambda r: map_(bool)(r).value_or(True) == IO(True)),
-            partial(map, bind_ioresult(append_gdf_file(dest))),
-            partial(Fold.collect, acc=IOSuccess(())),
+    result = IO.do(
+        Success(subsets)
+        if subsets
+        else Failure(ValueError("No granules intersect AOI"))
+        for aoi_gdf in impure_safe(gpd.read_file)(aoi)
+        for collection in find_collection(maap)(cmr_host)({"doi": doi})
+        for granules in impure_safe(maap.searchGranule)(
+            cmr_host=cmr_host,
+            collection_concept_id=collection["concept-id"],
+            bounding_box=",".join(map(str)(aoi_gdf.total_bounds)),
+            limit=limit,
         )
+        for subsets in subset_granules(
+            aoi_gdf,
+            output_directory,
+            overwrite,
+            log_level,  # Yuck! Must be better way to deal with process initialization!
+            filter(granule_intersects(aoi_gdf.geometry[0]))(granules),
+        )
+    )
 
-    unsafe_perform_io(result).alt(raise_exception)
-    typer.echo(f"Wrote combined subsets to {dest}")
+    flow(
+        unsafe_perform_io(result),
+        map_(pipe(len, f"Subset {{}} granule(s) to {dest}".format, logger.info)),
+        lash(raise_exception),
+    )
 
 
 if __name__ == "__main__":
