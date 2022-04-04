@@ -1,0 +1,6 @@
+geopandas
+h5py
+returns
+shapely
+typer
+-e git+https://github.com/MAAP-Project/maap-py.git#egg=maappy
