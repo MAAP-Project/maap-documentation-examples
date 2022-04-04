@@ -303,7 +303,7 @@ def subset_h5(
                     0, "BEAM", np.repeat(str(v), len(beam_df.index)).tolist()
                 )
                 # Appending to the subset_df dataframe
-                subset_df = subset_df.append(beam_df)
+                subset_df = pd.concat([subset_df, beam_df])
 
     # all_gdf = gpd.GeoDataFrame(subset_df, geometry=gpd.points_from_xy(subset_df.lon_lowestmode, subset_df.lat_lowestmode))
     all_gdf = gpd.GeoDataFrame(
