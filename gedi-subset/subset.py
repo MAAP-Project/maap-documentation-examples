@@ -60,6 +60,7 @@ def find_collection(
 def subset_granules(
     aoi_gdf: gpd.GeoDataFrame,
     output_directory: Path,
+    dest: Path,
     overwrite: bool,
     log_level: int,
     granules: Iterable[Granule],
@@ -68,7 +69,7 @@ def subset_granules(
     global process_granule
 
     @impure_safe
-    def process_granule(granule: Granule) -> Maybe[str]:
+    def process_granule(granule: Granule) -> str:
         filter_cols = [
             "agbd",
             "agbd_se",
@@ -85,14 +86,10 @@ def subset_granules(
 
         if overwrite or not os.path.exists(outpath):
             gdf = df_assign("filename", inpath, subset_h5(inpath, aoi_gdf, filter_cols))
+            if not gdf.empty:
+                gdf.to_file(outpath, driver="FlatGeobuf")
 
-            if gdf.empty:
-                logger.debug(f"Subset of {inpath} is empty; not writing")
-                return Nothing
-
-            gdf.to_file(outpath, driver="FlatGeobuf")
-
-        return Some(outpath)
+        return outpath
 
     # Use half the CPUs available to this process (or at least 1 CPU)
     processes = max(1, len(os.sched_getaffinity(0)) // 2)
@@ -104,7 +101,9 @@ def subset_granules(
     with multiprocessing.Pool(processes, set_log_level, (log_level,)) as pool:
         return flow(
             pool.imap_unordered(process_granule, granules, chunksize),
-            filter(lambda result: unwrap_or_failure(result) != IO(Nothing)),
+            filter(lambda r: bind_ioresult(impure_safe(os.path.exists))(r).value_or(True)),
+            map(tap(bind_ioresult(pipe(f"Appending {{}} to {dest}".format, logger.debug)))),
+            map(tap(bind_ioresult(append_gdf_file(dest)))),
             partial(Fold.collect, acc=IOSuccess(())),
         )
 
@@ -180,6 +179,7 @@ def main(
         for subsets in subset_granules(
             aoi_gdf,
             output_directory,
+            dest,
             overwrite,
             log_level,  # Yuck! Must be better way to deal with process initialization!
             filter(granule_intersects(aoi_gdf.geometry[0]))(granules),
