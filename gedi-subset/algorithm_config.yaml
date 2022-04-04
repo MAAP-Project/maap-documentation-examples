@@ -1,0 +1,13 @@
+description: Subset GEDI L4A granules within an area of interest (AOI)
+algo_name: subset
+version: gedi-subset
+environment: ubuntu
+repository_url: https://github.com/MAAP-Project/maap-documentation-examples/
+docker_url: mas.maap-project.org:5000/root/ade-base-images/r:latest
+queue: maap-dps-worker-8gb
+build_command: maap-documentation-examples/build.sh
+run_command: maap-documentation-examples/gedi-subset/subset.sh
+disk_space: 10GB
+inputs:
+  - name: aoi
+    download: True
