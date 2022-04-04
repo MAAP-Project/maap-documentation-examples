@@ -146,7 +146,7 @@ def append_gdf_file(
     return flow(
         src,
         impure_safe(gpd.read_file),
-        bind_ioresult(gdf_to_file(dest, {"mode": "a", "driver": "GPKG"})),
+        bind_ioresult(gdf_to_file(dest, {"index": False, "mode": "a", "driver": "GPKG"})),
         bimap(
             identity,
             lambda e: e if f"{src}" in f"{e}" else append_message(f"source {src}"),
