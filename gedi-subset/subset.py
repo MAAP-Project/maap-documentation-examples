@@ -8,6 +8,7 @@ import warnings
 from pathlib import Path
 from typing import Any, Callable, Iterable, Mapping, Optional, Tuple, TypeVar
 
+import geopandas as gpd
 import typer
 from fp import K, filter, map
 from gedi_utils import (
@@ -30,17 +31,7 @@ from returns.pointfree import bind_ioresult, bind_result, lash, map_
 from returns.result import Failure, Success, safe
 from returns.unsafe import unsafe_perform_io
 
-# Suppress UserWarning: The Shapely GEOS version (3.10.2-CAPI-1.16.0) is incompatible
-# with the GEOS version PyGEOS was compiled with (3.8.1-CAPI-1.13.3). Conversions
-# between both will be slow.
-#  shapely_geos_version, geos_capi_version_string
-with warnings.catch_warnings():
-    warnings.simplefilter("ignore")
-    import geopandas as gpd
-
-
 logging.basicConfig(
-    level=logging.CRITICAL,  # Suppress ERRORs from fiona._env logger
     format="%(asctime)s [%(processName)s:%(name)s] [%(levelname)s] %(message)s",
 )
 logger = logging.getLogger(__name__)
@@ -89,12 +80,14 @@ def subset_granules(
         logger.debug(f"Downloading granule {granule['Granule']['GranuleUR']}")
         inpath = granule.getData(str(output_directory))
         outpath = chext(".fgb", inpath)
-        logger.debug(f"Subsetting {inpath}")
+        logger.debug(f"Subsetting {inpath} to {outpath}")
 
         if overwrite or not os.path.exists(outpath):
-            gdf = df_assign("filename", inpath, subset_h5(inpath, aoi_gdf, filter_cols))
-            gdf_to_file(outpath, dict(index=False, driver="FlatGeobuf"), gdf).alt(
-                raise_exception
+            flow(
+                subset_h5(inpath, aoi_gdf, filter_cols),
+                df_assign("filename", inpath),
+                gdf_to_file(outpath, dict(index=False, driver="FlatGeobuf")),
+                lash(raise_exception),
             )
 
         return outpath
