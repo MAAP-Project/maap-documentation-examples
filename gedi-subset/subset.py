@@ -10,7 +10,14 @@ from typing import Any, Callable, Iterable, Mapping, Optional, Tuple, TypeVar
 
 import typer
 from fp import K, filter, map
-from gedi_utils import append_gdf_file, chext, df_assign, granule_intersects, subset_h5
+from gedi_utils import (
+    append_gdf_file,
+    chext,
+    df_assign,
+    gdf_to_file,
+    granule_intersects,
+    subset_h5,
+)
 from maap.maap import MAAP, Collection, Granule
 from returns.curry import curry, partial
 from returns.functions import identity, raise_exception, tap
@@ -86,8 +93,9 @@ def subset_granules(
 
         if overwrite or not os.path.exists(outpath):
             gdf = df_assign("filename", inpath, subset_h5(inpath, aoi_gdf, filter_cols))
-            if not gdf.empty:
-                gdf.to_file(outpath, driver="FlatGeobuf")
+            gdf_to_file(outpath, dict(index=False, driver="FlatGeobuf"), gdf).alt(
+                raise_exception
+            )
 
         return outpath
 
@@ -101,8 +109,8 @@ def subset_granules(
     with multiprocessing.Pool(processes, set_log_level, (log_level,)) as pool:
         return flow(
             pool.imap_unordered(process_granule, granules, chunksize),
-            filter(lambda r: bind_ioresult(impure_safe(os.path.exists))(r).value_or(True)),
-            map(tap(bind_ioresult(pipe(f"Appending {{}} to {dest}".format, logger.debug)))),
+            filter(lambda r: map_(impure_safe(os.path.exists))(r).value_or(True)),
+            map(tap(map_(pipe(f"Appending {{}} to {dest}".format, logger.debug)))),
             map(tap(bind_ioresult(append_gdf_file(dest)))),
             partial(Fold.collect, acc=IOSuccess(())),
         )

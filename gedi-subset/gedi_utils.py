@@ -2,10 +2,7 @@ import json
 import os
 import os.path
 import warnings
-from maap.maap import Granule
 from pathlib import Path
-from shapely.geometry import Polygon
-from shapely.geometry.base import BaseGeometry
 from typing import (
     Any,
     Callable,
@@ -32,6 +29,8 @@ from returns.pipeline import flow, pipe
 from returns.pointfree import bimap, bind_ioresult, map_
 from returns.result import Success
 from returns.unsafe import unsafe_perform_io
+from shapely.geometry import Polygon
+from shapely.geometry.base import BaseGeometry
 
 # Suppress UserWarning: The Shapely GEOS version (3.10.2-CAPI-1.16.0) is incompatible
 # with the GEOS version PyGEOS was compiled with (3.8.1-CAPI-1.13.3). Conversions
@@ -99,13 +98,7 @@ def df_assign(col_name: str, val: Any, df: _DF) -> _DF:
 
 @curry
 def append_message(extra_message: str, e: Exception) -> Exception:
-    message, *other_args = (
-        e.args
-        if e.args
-        else tuple(
-            "",
-        )
-    )
+    message, *other_args = e.args if e.args else ("",)
     new_message = f"{message}: {extra_message}" if message else extra_message
     e.args = (new_message, *other_args)
 
@@ -131,10 +124,16 @@ def gdf_to_file(
     # exception rather than simply creating a new file.  Therefore, in that case, we
     # switch to mode='w' to avoid the error.
     mode = props.get("mode")
-    props = dict(props, mode="w" if mode == "a" and not os.path.exists(file) else mode)
+    props = dict(props, mode="w") if mode == "a" and not os.path.exists(file) else props
 
-    return impure_safe(gdf.to_file)(file, **props).alt(
-        lambda e: e if f"{file}" in f"{e}" else append_message(f"writing to {file}")
+    return (
+        IOSuccess(None)
+        if gdf.empty
+        else impure_safe(gdf.to_file)(file, **props).alt(
+            lambda e: e
+            if f"{file}" in f"{e}"
+            else append_message(f"writing to {file}")(e)
+        )
     )
 
 
@@ -146,10 +145,12 @@ def append_gdf_file(
     return flow(
         src,
         impure_safe(gpd.read_file),
-        bind_ioresult(gdf_to_file(dest, {"index": False, "mode": "a", "driver": "GPKG"})),
+        bind_ioresult(
+            gdf_to_file(dest, {"index": False, "mode": "a", "driver": "GPKG"})
+        ),
         bimap(
             identity,
-            lambda e: e if f"{src}" in f"{e}" else append_message(f"source {src}"),
+            lambda e: e if f"{src}" in f"{e}" else append_message(f"source {src}")(e),
         ),
     )
 
@@ -208,7 +209,7 @@ def subset_gedi_granule(
 @curry
 def granule_intersects(aoi: BaseGeometry, granule: Granule):
     """Determines whether or not a granule intersects an Area of Interest
-    
+
     Returns `True` if the polygon determined by the points in the `granule`'s
     horizontal spatial domain intersects the geometry of the Area of Interest;
     `False` otherwise.
