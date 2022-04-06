@@ -13,7 +13,7 @@ if test -d input; then
     # We are executing within a DPS job, so the AOI file was automatically
     # downloaded to the `input` directory.
     aoi=$(ls input/*)
-    ${basedir}/subset.py --verbose --aoi "${aoi}" "$@"
+    ${basedir}/subset.py --verbose --aoi "${aoi}" --limit "${1:-10000}"
 else
     # This was invoked directly, so simply pass all arguments through to the
     # Python script.

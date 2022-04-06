@@ -11,3 +11,5 @@ disk_space: 10GB
 inputs:
   - name: aoi
     download: True
+  - name: limit
+    download: False
