@@ -1,2 +1,8 @@
 #!/usr/bin/env bash
-mamba env create -f environment.yml
+
+basedir=$(dirname "$(readlink -f "$0")")
+
+set -euo pipefail
+set -x
+
+mamba env create -f "${basedir}/environment.yml"
