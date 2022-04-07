@@ -3,6 +3,12 @@ channels:
   - defaults
   - conda-forge
 dependencies:
+  - gdal>=3,<3.2
+  - geopandas
+  - h5py
+  - returns
+  - shapely
+  - typer
   - pip
   - pip:
-      - -r gedi-subset/requirements.txt
+      - git+https://github.com/MAAP-Project/maap-py.git#egg=maappy
