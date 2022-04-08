@@ -3,7 +3,8 @@ channels:
   - defaults
   - conda-forge
 dependencies:
-  - gdal>=3,<3.2
+  - python=3.10
+  - gdal>=3.4
   - geopandas
   - h5py
   - returns

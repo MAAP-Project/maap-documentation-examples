@@ -4,4 +4,4 @@ basedir=$(dirname "$(readlink -f "$0")")
 
 set -xeuo pipefail
 
-mamba env update -n base -f "${basedir}/environment.yml"
+mamba env create -f "${basedir}/environment.yml"

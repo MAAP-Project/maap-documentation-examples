@@ -2,22 +2,14 @@
 
 set -xeuo pipefail
 
-conda list
-
 basedir=$(dirname "$(readlink -f "$0")")
 
-if conda env list | grep -q gedi_subset; then
-    env=gedi_subset
-else
-    env=base
-    # List everything to help discover why things
-    # fail to run in the context of a DPS job.
-    conda list
-fi
-
-subset_py="conda run -n ${env} ${basedir}/subset.py"
+subset_py="conda run --no-capture-output -n gedi_subset ${basedir}/subset.py"
 
 if test -d input; then
+    conda list -n base
+    conda list -n gedi_subset
+
     # We are executing within a DPS job, so the AOI file was automatically
     # downloaded to the `input` directory.
     aoi=$(ls input/*)
