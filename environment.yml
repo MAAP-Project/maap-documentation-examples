@@ -4,6 +4,8 @@ channels:
   - conda-forge
 dependencies:
   - python=3.10
+  - boto3
+  - cachetools
   - gdal>=3.4
   - geopandas
   - h5py

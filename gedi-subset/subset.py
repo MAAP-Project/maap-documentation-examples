@@ -8,6 +8,7 @@ import warnings
 from pathlib import Path
 from typing import Any, Callable, Iterable, Mapping, Optional, Tuple, TypeVar
 
+import boto3
 import geopandas as gpd
 import typer
 from fp import K, filter, map
@@ -19,7 +20,6 @@ from gedi_utils import (
     granule_intersects,
     subset_h5,
 )
-from maap.maap import MAAP, Collection, Granule
 from returns.curry import curry, partial
 from returns.functions import identity, raise_exception, tap
 from returns.io import IO, IOFailure, IOResult, IOResultE, IOSuccess, impure_safe
@@ -31,15 +31,29 @@ from returns.pointfree import bind_ioresult, bind_result, lash, map_
 from returns.result import Failure, Success, safe
 from returns.unsafe import unsafe_perform_io
 
-logging.basicConfig(
-    format="%(asctime)s [%(processName)s:%(name)s] [%(levelname)s] %(message)s",
-)
+from maap.maap import MAAP, Collection, Granule
+
+S3_CREDENTIALS_ENDPOINT = "https://data.ornldaac.earthdata.nasa.gov/s3credentials"
+LOGGING_FORMAT = "%(asctime)s [%(processName)s:%(name)s] [%(levelname)s] %(message)s"
+
+logging.basicConfig(level=logging.INFO, format=LOGGING_FORMAT)
 logger = logging.getLogger(__name__)
 
 
-def set_log_level(level: int):
+def init_process(maap: MAAP, logging_level: int) -> None:
+    set_logging_level(logging_level)
+    creds = maap.aws.earthdata_s3_credentials(S3_CREDENTIALS_ENDPOINT)
+    boto3.setup_default_session(
+        aws_access_key_id=creds["accessKeyId"],
+        aws_secret_access_key=creds["secretAccessKey"],
+        aws_session_token=creds["sessionToken"],
+        region_name="us-west-2",
+    )
+
+
+def set_logging_level(logging_level: int) -> None:
     global logger
-    logger.setLevel(level)
+    logger.setLevel(logging_level)
 
 
 @curry
@@ -60,7 +74,7 @@ def subset_granules(
     output_directory: Path,
     dest: Path,
     overwrite: bool,
-    log_level: int,
+    init_args: Tuple[Any, ...],
     granules: Iterable[Granule],
 ) -> IOResultE[Tuple[str, ...]]:
     # Must declare nested function as global to allow multiprocessing to pickle it.
@@ -99,7 +113,7 @@ def subset_granules(
 
     logger.info(f"Subsetting on {processes} processes (chunksize={chunksize})")
 
-    with multiprocessing.Pool(processes, set_log_level, (log_level,)) as pool:
+    with multiprocessing.Pool(processes, init_process, init_args) as pool:
         return flow(
             pool.imap_unordered(process_granule, granules, chunksize),
             filter(lambda r: map_(impure_safe(os.path.exists))(r).value_or(True)),
@@ -152,8 +166,8 @@ def main(
     ),
     verbose: bool = typer.Option(False, help="Provide verbose output"),
 ) -> None:
-    log_level = logging.DEBUG if verbose else logging.INFO
-    set_log_level(log_level)
+    logging_level = logging.DEBUG if verbose else logging.INFO
+    set_logging_level(logging_level)
 
     os.makedirs(output_directory, exist_ok=True)
     dest = output_directory / "gedi_subset.gpkg"
@@ -165,6 +179,7 @@ def main(
     impure_safe(os.remove)(dest)
 
     maap = MAAP("api.ops.maap-project.org")
+
     result = IO.do(
         Success(subsets)
         if subsets
@@ -182,7 +197,10 @@ def main(
             output_directory,
             dest,
             overwrite,
-            log_level,  # Yuck! Must be better way to deal with process initialization!
+            (
+                maap,
+                logging_level,
+            ),
             filter(granule_intersects(aoi_gdf.geometry[0]))(granules),
         )
     )
