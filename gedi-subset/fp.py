@@ -1,5 +1,5 @@
 import builtins
-from typing import Any, Callable, Iterable, TypeVar
+from typing import Callable, Iterable, TypeVar
 
 from returns.curry import partial
 
@@ -12,7 +12,7 @@ def filter(predicate: Callable[[_A], bool]) -> Callable[[Iterable[_A]], Iterable
     return partial(builtins.filter, predicate)
 
 
-def K(a: _A) -> Callable[[_B], _A]:
+def K(a: _A) -> Callable[..., _A]:
     """The kestrel combinator ("constant" function)"""
     return lambda _: a
 

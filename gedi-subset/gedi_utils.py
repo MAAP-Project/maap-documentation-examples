@@ -2,33 +2,19 @@ import json
 import os
 import os.path
 import warnings
-from pathlib import Path
-from typing import (
-    Any,
-    Callable,
-    Iterable,
-    Mapping,
-    Optional,
-    Sequence,
-    Tuple,
-    Type,
-    TypeVar,
-    Union,
-)
+from typing import Any, Callable, Iterable, Mapping, Optional, Sequence, TypeVar, Union
 
 import h5py
 import numpy as np
 import pandas as pd
 import requests
-from maap.maap import Granule
+from maap.Result import Granule
 from returns.curry import curry, partial
-from returns.functions import identity, tap
+from returns.functions import identity
 from returns.io import IOFailure, IOResult, IOResultE, IOSuccess, impure_safe
 from returns.iterables import Fold
-from returns.pipeline import flow, pipe
-from returns.pointfree import bimap, bind_ioresult, map_
-from returns.result import Success
-from returns.unsafe import unsafe_perform_io
+from returns.pipeline import flow
+from returns.pointfree import bimap, bind_ioresult
 from shapely.geometry import Polygon
 from shapely.geometry.base import BaseGeometry
 
@@ -46,7 +32,6 @@ _B = TypeVar("_B")
 _C = TypeVar("_C")
 _D = TypeVar("_D")
 _DF = TypeVar("_DF", bound=pd.DataFrame)
-_E = TypeVar("_E", bound=Exception)
 _T = TypeVar("_T")
 
 
@@ -55,7 +40,6 @@ def pprint(value: Any) -> None:
 
 
 # str -> str -> str
-@curry
 def chext(ext: str, path: str) -> str:
     """Changes the extension of a path."""
     return f"{os.path.splitext(path)[0]}{ext}"
@@ -132,7 +116,7 @@ def gdf_to_file(
         else impure_safe(gdf.to_file)(file, **props).alt(
             lambda e: e
             if f"{file}" in f"{e}"
-            else append_message(f"writing to {file}")(e)
+            else append_message(f"writing to {file}", e)
         )
     )
 
@@ -146,11 +130,11 @@ def append_gdf_file(
         src,
         impure_safe(gpd.read_file),
         bind_ioresult(
-            gdf_to_file(dest, {"index": False, "mode": "a", "driver": "GPKG"})
+            partial(gdf_to_file, dest, {"index": False, "mode": "a", "driver": "GPKG"})
         ),
         bimap(
             identity,
-            lambda e: e if f"{src}" in f"{e}" else append_message(f"source {src}")(e),
+            lambda e: e if f"{src}" in f"{e}" else append_message(f"source {src}", e),
         ),
     )
 
