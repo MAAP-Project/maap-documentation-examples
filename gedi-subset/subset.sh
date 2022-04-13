@@ -4,12 +4,15 @@ set -xeuo pipefail
 
 basedir=$(dirname "$(readlink -f "$0")")
 
-subset_py="conda run --no-capture-output -n gedi_subset ${basedir}/subset.py"
+if type conda 1>/dev/null 2>&1; then
+    runner="conda run --no-capture-output -n gedi_subset "
+else
+    runner=""
+fi
+
+subset_py="${runner}${basedir}/subset.py"
 
 if test -d input; then
-    conda list -n base
-    conda list -n gedi_subset
-
     # We are executing within a DPS job, so the AOI file was automatically
     # downloaded to the `input` directory.
     aoi=$(ls input/*)
