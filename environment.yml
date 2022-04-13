@@ -6,7 +6,7 @@ dependencies:
   - python=3.10
   - boto3
   - cachetools
-  - gdal>=3.4
+  - gdal>=3
   - geopandas
   - h5py
   - returns
