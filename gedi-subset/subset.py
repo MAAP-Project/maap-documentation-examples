@@ -109,10 +109,9 @@ def subset_granules(
     init_args: Tuple[Any, ...],
     granules: Iterable[Granule],
 ) -> IOResultE[Tuple[str, ...]]:
-    # Use half the CPUs (or at least 1 CPU)
-    processes = max(1, cpu_count() // 2)
     # https://docs.python.org/3/library/multiprocessing.html#multiprocessing.pool.Pool.imap
     chunksize = 10
+    processes = cpu_count()
 
     logger.info(f"Subsetting on {processes} processes (chunksize={chunksize})")
 
