@@ -4,13 +4,26 @@ import multiprocessing
 import operator
 import os
 import os.path
-import warnings
+import sys
+from dataclasses import dataclass
+from enum import Enum
 from pathlib import Path
-from typing import Any, Callable, Iterable, Mapping, Optional, Tuple, TypeVar
+from typing import Any, Iterable, Mapping, Tuple
 
-import boto3
 import geopandas as gpd
 import typer
+from maap.maap import MAAP
+from maap.Result import Collection, Granule
+from returns.curry import curry, partial
+from returns.functions import raise_exception, tap
+from returns.io import IO, IOFailure, IOResult, IOResultE, IOSuccess, impure_safe
+from returns.iterables import Fold
+from returns.pipeline import flow, pipe
+from returns.pointfree import bind_ioresult, bind_result, lash, map_
+from returns.primitives.tracing import collect_traces
+from returns.result import Failure, Success, safe
+from returns.unsafe import unsafe_perform_io
+
 from fp import K, filter, map
 from gedi_utils import (
     append_gdf_file,
@@ -20,35 +33,68 @@ from gedi_utils import (
     granule_intersects,
     subset_h5,
 )
-from returns.curry import curry, partial
-from returns.functions import identity, raise_exception, tap
-from returns.io import IO, IOFailure, IOResult, IOResultE, IOSuccess, impure_safe
-from returns.iterables import Fold
-from returns.maybe import Maybe, Nothing, Some
-from returns.methods import unwrap_or_failure
-from returns.pipeline import flow, is_successful, managed, pipe
-from returns.pointfree import bind_ioresult, bind_result, lash, map_
-from returns.result import Failure, Success, safe
-from returns.unsafe import unsafe_perform_io
+from maapx import download_granule
 
-from maap.maap import MAAP, Collection, Granule
 
-S3_CREDENTIALS_ENDPOINT = "https://data.ornldaac.earthdata.nasa.gov/s3credentials"
+class CMRHost(str, Enum):
+    maap = "cmr.maap-project.org"
+    nasa = "cmr.earthdata.nasa.gov"
+
+
 LOGGING_FORMAT = "%(asctime)s [%(processName)s:%(name)s] [%(levelname)s] %(message)s"
 
 logging.basicConfig(level=logging.INFO, format=LOGGING_FORMAT)
 logger = logging.getLogger(__name__)
 
 
-def init_process(maap: MAAP, logging_level: int) -> None:
+@dataclass
+class ProcessGranuleProps:
+    granule: Granule
+    maap: MAAP
+    aoi_gdf: gpd.GeoDataFrame
+    output_directory: Path
+    overwrite: bool
+
+
+def cpu_count() -> int:
+    if sys.platform == "darwin":
+        return os.cpu_count() or 1
+    if sys.platform == "linux":
+        return len(os.sched_getaffinity(0))
+    return 1
+
+
+@impure_safe
+def process_granule(props: ProcessGranuleProps) -> str:
+    filter_cols = [
+        "agbd",
+        "agbd_se",
+        "l4_quality_flag",
+        "sensitivity",
+        "lat_lowestmode",
+        "lon_lowestmode",
+    ]
+
+    logger.debug(f"Downloading {props.granule.getDownloadUrl()}")
+
+    outdir = str(props.output_directory)
+    io_result = download_granule(props.maap, outdir, props.granule)
+    inpath = unsafe_perform_io(io_result.alt(raise_exception).unwrap())
+    outpath = chext(".fgb", inpath)
+
+    if props.overwrite or not os.path.exists(outpath):
+        flow(
+            subset_h5(inpath, props.aoi_gdf, filter_cols),
+            df_assign("filename", inpath),
+            gdf_to_file(outpath, dict(index=False, driver="FlatGeobuf")),
+            lash(raise_exception),
+        )
+
+    return outpath
+
+
+def init_process(logging_level: int) -> None:
     set_logging_level(logging_level)
-    creds = maap.aws.earthdata_s3_credentials(S3_CREDENTIALS_ENDPOINT)
-    boto3.setup_default_session(
-        aws_access_key_id=creds["accessKeyId"],
-        aws_secret_access_key=creds["secretAccessKey"],
-        aws_session_token=creds["sessionToken"],
-        region_name="us-west-2",
-    )
 
 
 def set_logging_level(logging_level: int) -> None:
@@ -70,6 +116,7 @@ def find_collection(
 
 
 def subset_granules(
+    maap: MAAP,
     aoi_gdf: gpd.GeoDataFrame,
     output_directory: Path,
     dest: Path,
@@ -77,48 +124,24 @@ def subset_granules(
     init_args: Tuple[Any, ...],
     granules: Iterable[Granule],
 ) -> IOResultE[Tuple[str, ...]]:
-    # Must declare nested function as global to allow multiprocessing to pickle it.
-    global process_granule
-
-    @impure_safe
-    def process_granule(granule: Granule) -> str:
-        filter_cols = [
-            "agbd",
-            "agbd_se",
-            "l4_quality_flag",
-            "sensitivity",
-            "lat_lowestmode",
-            "lon_lowestmode",
-        ]
-
-        logger.debug(f"Downloading granule {granule['Granule']['GranuleUR']}")
-        inpath = granule.getData(str(output_directory))
-        outpath = chext(".fgb", inpath)
-        logger.debug(f"Subsetting {inpath} to {outpath}")
-
-        if overwrite or not os.path.exists(outpath):
-            flow(
-                subset_h5(inpath, aoi_gdf, filter_cols),
-                df_assign("filename", inpath),
-                gdf_to_file(outpath, dict(index=False, driver="FlatGeobuf")),
-                lash(raise_exception),
-            )
-
-        return outpath
-
-    # Use half the CPUs available to this process (or at least 1 CPU)
-    processes = max(1, len(os.sched_getaffinity(0)) // 2)
+    # Use half the CPUs (or at least 1 CPU)
+    processes = max(1, cpu_count() // 2)
     # https://docs.python.org/3/library/multiprocessing.html#multiprocessing.pool.Pool.imap
     chunksize = 10
 
     logger.info(f"Subsetting on {processes} processes (chunksize={chunksize})")
 
+    props = (
+        ProcessGranuleProps(granule, maap, aoi_gdf, output_directory, overwrite)
+        for granule in granules
+    )
+
     with multiprocessing.Pool(processes, init_process, init_args) as pool:
         return flow(
-            pool.imap_unordered(process_granule, granules, chunksize),
+            pool.imap_unordered(process_granule, props, chunksize),
             filter(lambda r: map_(impure_safe(os.path.exists))(r).value_or(True)),
             map(tap(map_(pipe(f"Appending {{}} to {dest}".format, logger.debug)))),
-            map(tap(bind_ioresult(append_gdf_file(dest)))),
+            map(tap(bind_ioresult(partial(append_gdf_file, dest)))),
             partial(Fold.collect, acc=IOSuccess(())),
         )
 
@@ -139,9 +162,8 @@ def main(
         "10.3334/ORNLDAAC/2056",  # GEDI L4A DOI, v2.1
         help="Digital Object Identifier of collection to subset (https://www.doi.org/)",
     ),
-    cmr_host=typer.Option(
-        # "cmr.maap-project.org",  # Doesn't properly handle HTTPS fallback from S3
-        "cmr.earthdata.nasa.gov",
+    cmr_host: CMRHost = typer.Option(
+        CMRHost.maap,
         help="CMR hostname",
     ),
     limit: int = typer.Option(
@@ -185,7 +207,7 @@ def main(
         if subsets
         else Failure(ValueError("No granules intersect AOI"))
         for aoi_gdf in impure_safe(gpd.read_file)(aoi)
-        for collection in find_collection(maap)(cmr_host)({"doi": doi})
+        for collection in find_collection(maap, cmr_host, {"doi": doi})
         for granules in impure_safe(maap.searchGranule)(
             cmr_host=cmr_host,
             collection_concept_id=collection["concept-id"],
@@ -193,15 +215,13 @@ def main(
             limit=limit,
         )
         for subsets in subset_granules(
+            maap,
             aoi_gdf,
             output_directory,
             dest,
             overwrite,
-            (
-                maap,
-                logging_level,
-            ),
-            filter(granule_intersects(aoi_gdf.geometry[0]))(granules),
+            (logging_level,),
+            filter(partial(granule_intersects, aoi_gdf.geometry[0]))(granules),
         )
     )
 
