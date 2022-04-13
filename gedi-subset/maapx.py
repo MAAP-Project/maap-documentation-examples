@@ -1,17 +1,19 @@
 import logging
+import operator
 from typing import Mapping, TYPE_CHECKING
 
 import boto3
 from cachetools import cached, FIFOCache
 from cachetools.func import ttl_cache
 from maap.maap import MAAP
-from maap.Result import Granule
+from maap.Result import Collection, Granule
 from returns.curry import partial
 from returns.functions import tap
 from returns.io import IOFailure, IOResultE, impure_safe
 from returns.maybe import Maybe, Nothing, Some, maybe
 from returns.pipeline import flow
-from returns.pointfree import bind, bind_ioresult, lash, map_
+from returns.pointfree import bind, bind_ioresult, bind_result, lash, map_
+from returns.result import safe
 
 from fp import K
 
@@ -71,3 +73,15 @@ def download_granule(maap: MAAP, todir: str, granule: Granule) -> IOResultE[str]
     )
 
     return impure_safe(granule.getData)(todir)
+
+
+def find_collection(
+    maap: MAAP,
+    cmr_host: str,
+    params: Mapping[str, str],
+) -> IOResultE[Collection]:
+    return flow(
+        impure_safe(maap.searchCollection)(cmr_host=cmr_host, **dict(params, limit=1)),
+        bind_result(safe(operator.itemgetter(0))),
+        lash(K(IOFailure(ValueError(f"No collection found at {cmr_host}: {params}")))),
+    )

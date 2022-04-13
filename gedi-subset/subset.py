@@ -1,27 +1,25 @@
 #!/usr/bin/env python
 import logging
 import multiprocessing
-import operator
 import os
 import os.path
 import sys
 from dataclasses import dataclass
 from enum import Enum
 from pathlib import Path
-from typing import Any, Iterable, Mapping, Tuple
+from typing import Any, Iterable, Tuple
 
 import geopandas as gpd
 import typer
 from maap.maap import MAAP
-from maap.Result import Collection, Granule
-from returns.curry import curry, partial
+from maap.Result import Granule
+from returns.curry import partial
 from returns.functions import raise_exception, tap
-from returns.io import IO, IOFailure, IOResult, IOResultE, IOSuccess, impure_safe
+from returns.io import IO, IOResultE, IOSuccess, impure_safe
 from returns.iterables import Fold
 from returns.pipeline import flow, pipe
-from returns.pointfree import bind_ioresult, bind_result, lash, map_
-from returns.primitives.tracing import collect_traces
-from returns.result import Failure, Success, safe
+from returns.pointfree import bind_ioresult, lash, map_
+from returns.result import Failure, Success
 from returns.unsafe import unsafe_perform_io
 
 from fp import K, filter, map
@@ -33,7 +31,7 @@ from gedi_utils import (
     granule_intersects,
     subset_h5,
 )
-from maapx import download_granule
+from maapx import download_granule, find_collection
 
 
 class CMRHost(str, Enum):
@@ -100,19 +98,6 @@ def init_process(logging_level: int) -> None:
 def set_logging_level(logging_level: int) -> None:
     global logger
     logger.setLevel(logging_level)
-
-
-@curry
-def find_collection(
-    maap: MAAP,
-    cmr_host: str,
-    params: Mapping[str, str],
-) -> IOResultE[Collection]:
-    return flow(
-        impure_safe(maap.searchCollection)(cmr_host=cmr_host, **dict(params, limit=1)),
-        bind_result(safe(operator.itemgetter(0))),
-        lash(K(IOFailure(ValueError(f"No collection found at {cmr_host}: {params}")))),
-    )
 
 
 def subset_granules(
