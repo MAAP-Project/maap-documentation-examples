@@ -6,11 +6,11 @@ dependencies:
   - python=3.10
   - boto3
   - cachetools
-  - gdal>=3
+  - gdal>=3.4
   - geopandas
   - h5py
   - returns
-  - shapely>=1.7,<1.8
+  - shapely
   - typer
   - pip
   - pip:

@@ -4,6 +4,6 @@ geopandas
 h5py
 returns
 pip
-shapely>=1.7,<1.8
+shapely
 typer
 git+https://github.com/MAAP-Project/maap-py.git#egg=maappy
