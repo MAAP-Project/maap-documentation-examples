@@ -3,6 +3,7 @@ cachetools
 geopandas
 h5py
 returns
-shapely<1.8
+pip
+shapely>=1.7,<1.8
 typer
 git+https://github.com/MAAP-Project/maap-py.git#egg=maappy

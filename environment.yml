@@ -10,7 +10,7 @@ dependencies:
   - geopandas
   - h5py
   - returns
-  - shapely<1.8
+  - shapely>=1.7,<1.8
   - typer
   - pip
   - pip:
