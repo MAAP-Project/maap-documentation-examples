@@ -7,7 +7,7 @@ docker_url: mas.maap-project.org:5000/root/ade-base-images/r:latest
 queue: maap-dps-worker-32gb
 build_command: maap-documentation-examples/build.sh
 run_command: maap-documentation-examples/gedi-subset/subset.sh
-disk_space: 200GB
+disk_space: 300GB
 inputs:
   - name: aoi
     download: True
