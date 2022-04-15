@@ -17,7 +17,9 @@ from returns.curry import partial
 from returns.functions import raise_exception, tap
 from returns.io import IO, IOResultE, IOSuccess, impure_safe
 from returns.iterables import Fold
-from returns.pipeline import flow, pipe
+from returns.maybe import Maybe, Some, Nothing
+from returns.methods import unwrap_or_failure
+from returns.pipeline import flow, is_successful, pipe
 from returns.pointfree import bind_ioresult, lash, map_
 from returns.result import Failure, Success
 from returns.unsafe import unsafe_perform_io
@@ -42,7 +44,7 @@ class CMRHost(str, Enum):
 LOGGING_FORMAT = "%(asctime)s [%(processName)s:%(name)s] [%(levelname)s] %(message)s"
 
 logging.basicConfig(level=logging.INFO, format=LOGGING_FORMAT)
-logger = logging.getLogger(__name__)
+logger = logging.getLogger("gedi_subset")
 
 
 @dataclass
@@ -63,7 +65,7 @@ def cpu_count() -> int:
 
 
 @impure_safe
-def process_granule(props: ProcessGranuleProps) -> str:
+def process_granule(props: ProcessGranuleProps) -> Maybe[str]:
     filter_cols = [
         "agbd",
         "agbd_se",
@@ -72,13 +74,12 @@ def process_granule(props: ProcessGranuleProps) -> str:
         "lat_lowestmode",
         "lon_lowestmode",
     ]
-
-    logger.debug(f"Downloading {props.granule.getDownloadUrl()}")
-
     outdir = str(props.output_directory)
     io_result = download_granule(props.maap, outdir, props.granule)
     inpath = unsafe_perform_io(io_result.alt(raise_exception).unwrap())
     outpath = chext(".fgb", inpath)
+
+    logger.debug(f"Subsetting {inpath} to {outpath}")
 
     if props.overwrite or not os.path.exists(outpath):
         flow(
@@ -88,7 +89,7 @@ def process_granule(props: ProcessGranuleProps) -> str:
             lash(raise_exception),
         )
 
-    return outpath
+    return Some(outpath) if os.path.exists(outpath) else Nothing
 
 
 def init_process(logging_level: int) -> None:
@@ -123,9 +124,10 @@ def subset_granules(
     with multiprocessing.Pool(processes, init_process, init_args) as pool:
         return flow(
             pool.imap_unordered(process_granule, props, chunksize),
-            filter(lambda r: map_(impure_safe(os.path.exists))(r).value_or(True)),
+            filter(lambda r: map_(is_successful)(r) == IOSuccess(True)),
+            map(map_(unwrap_or_failure)),
             map(tap(map_(pipe(f"Appending {{}} to {dest}".format, logger.debug)))),
-            map(tap(bind_ioresult(partial(append_gdf_file, dest)))),
+            map(bind_ioresult(partial(append_gdf_file, dest))),
             partial(Fold.collect, acc=IOSuccess(())),
         )
 

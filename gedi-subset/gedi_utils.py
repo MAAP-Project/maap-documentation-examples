@@ -1,4 +1,5 @@
 import json
+import logging
 import os
 import os.path
 import warnings
@@ -14,9 +15,11 @@ from returns.functions import identity
 from returns.io import IOFailure, IOResult, IOResultE, IOSuccess, impure_safe
 from returns.iterables import Fold
 from returns.pipeline import flow
-from returns.pointfree import bimap, bind_ioresult
+from returns.pointfree import bimap, bind_ioresult, map_
 from shapely.geometry import Polygon
 from shapely.geometry.base import BaseGeometry
+
+from fp import K
 
 # Suppress UserWarning: The Shapely GEOS version (3.10.2-CAPI-1.16.0) is incompatible
 # with the GEOS version PyGEOS was compiled with (3.8.1-CAPI-1.13.3). Conversions
@@ -33,6 +36,8 @@ _C = TypeVar("_C")
 _D = TypeVar("_D")
 _DF = TypeVar("_DF", bound=pd.DataFrame)
 _T = TypeVar("_T")
+
+logger = logging.getLogger(f"gedi_subset.{__name__}")
 
 
 def pprint(value: Any) -> None:
@@ -110,6 +115,12 @@ def gdf_to_file(
     mode = props.get("mode")
     props = dict(props, mode="w") if mode == "a" and not os.path.exists(file) else props
 
+    logger.debug(
+        f"Empty GeoDataFrame; not writing {file}"
+        if gdf.empty
+        else f"Writing to {file}"
+    )
+
     return (
         IOSuccess(None)
         if gdf.empty
@@ -125,17 +136,14 @@ def gdf_to_file(
 def append_gdf_file(
     dest: Union[str, os.PathLike],
     src: Union[str, os.PathLike],
-) -> IOResultE[None]:
+) -> IOResultE[Union[str, os.PathLike]]:
+    to_file_options = {"index": False, "mode": "a", "driver": "GPKG"}
+
     return flow(
         src,
         impure_safe(gpd.read_file),
-        bind_ioresult(
-            partial(gdf_to_file, dest, {"index": False, "mode": "a", "driver": "GPKG"})
-        ),
-        bimap(
-            identity,
-            lambda e: e if f"{src}" in f"{e}" else append_message(f"source {src}", e),
-        ),
+        bind_ioresult(partial(gdf_to_file, dest, to_file_options)),
+        map_(K(src)),
     )
 
 
