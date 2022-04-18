@@ -1,4 +1,4 @@
-#!/usr/bin/env -S python -W ignore::DeprecationWarning
+#!/usr/bin/env -S python -W ignore::FutureWarning
 
 import logging
 import multiprocessing
