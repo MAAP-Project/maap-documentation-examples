@@ -1,4 +1,5 @@
-#!/usr/bin/env python
+#!/usr/bin/env python -W ignore::DeprecationWarning
+
 import logging
 import multiprocessing
 import os
@@ -112,7 +113,7 @@ def subset_granules(
 ) -> IOResultE[Tuple[str, ...]]:
     # https://docs.python.org/3/library/multiprocessing.html#multiprocessing.pool.Pool.imap
     chunksize = 10
-    processes = cpu_count()
+    processes = os.cpu_count()
 
     logger.info(f"Subsetting on {processes} processes (chunksize={chunksize})")
 
