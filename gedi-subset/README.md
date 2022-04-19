@@ -122,13 +122,13 @@ root = ET.fromstring(maap.getJobResult('36f902ca-54fe-4ca1-a6d1-8ebb97e65021').t
 data_elements = root.findall('./*/{http://www.opengis.net/wps/2.0}Data')
 data = urllib.parse.urlparse(data_elements[0].text) if len(data_elements) == 3 else None
 key = '/'.join(data.path.split('/')[2:]) if data else None
-f"/my-private-bucket/{key}" if len(data_elements) == 3 else 'Check job status'
+f"/projects/my-private-bucket/{key}" if len(data_elements) == 3 else 'Check job status'
 ```
 
 For a successful job, you should see something similar to the following:
 
 ```plain
-/my-private-bucket/dps_output/gedi-subset_ubuntu/gedi-subset/2022/04/19/02/12/04/570895
+/projects/my-private-bucket/dps_output/gedi-subset_ubuntu/gedi-subset/2022/04/19/02/12/04/570895
 ```
 
 ## Citations
