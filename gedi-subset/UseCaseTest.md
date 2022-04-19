@@ -12,6 +12,7 @@ Authors: Alex Mandel and Chuck Daniels
 - [Combine](#combine)
   - [Process](#process-1)
   - [Timing](#timing-1)
+  - [DPS Jobs](#dps-jobs)
 
 ## CMR Query
 
@@ -59,7 +60,7 @@ Authors: Alex Mandel and Chuck Daniels
   extremely large still.
 - TODO: Spatial filter applies before extracting data (2) could cut down on time
   and memory requirement significantly.
-- Consider alternative read methods, Xarray, direct from S3 without download.  
+- Consider alternative read methods, Xarray, direct from S3 without download.
 
 ### Questions
 
@@ -233,3 +234,44 @@ Combined file size: 82,798,032 bytes
 
 Combining all 467 `.fgb` files into a single `.gpkg` file (2.5G) took 4360
 seconds (~73 minutes).
+
+### DPS Jobs
+
+Running a DPS job to subset the entirety of Equatorial Guinea (GNQ_ADM0) using
+the default queue took 9 hours, but only 2 CPUs were available.  The resulting
+subset file is ~1.1GB, combined from 266 granule files.
+
+It is unclear what the "default" queue is, but it provides 8GB of memory.
+
+- JobID: `bfb7e574-600a-4eaa-b5f6-3ab4bd477a5c`
+- aoi: <https://maap-ops-workspace.s3.amazonaws.com/shared/dschuck/iso3/GNQ-ADM0.geojson>
+- limit: 2000
+
+```plain
+machine_type          t3a.large
+architecture          x86_64
+machine_memory_size   7.70 GB
+directory_size        85449449472
+operating_system      CentOS
+job_start_time        2022-04-16T02:12:03.110101Z
+job_end_time          2022-04-16T11:12:38.705999Z
+job_duration_seconds  32435.595898
+```
+
+Choosing the 32GB queue, provided 4 CPUs, so the execution time was half of the
+above, at roughly 4.5 hours:
+
+- JobID: `36f902ca-54fe-4ca1-a6d1-8ebb97e65021`
+- aoi: <https://maap-ops-workspace.s3.amazonaws.com/shared/dschuck/iso3/GNQ-ADM0.geojson>
+- limit: 2000
+
+```plain
+machine_type          r5a.xlarge
+architecture          x86_64
+machine_memory_size   31.00 GB
+directory_size        85432406016
+operating_system      CentOS
+job_start_time        2022-04-18T21:42:35.633404Z
+job_end_time          2022-04-19T02:12:05.678511Z
+job_duration_seconds  16170.045107
+```
