@@ -1,10 +1,11 @@
 import logging
 import operator
-from typing import Mapping, TYPE_CHECKING
+from typing import TYPE_CHECKING, Mapping
 
 import boto3
-from cachetools import cached, FIFOCache
+from cachetools import FIFOCache, cached
 from cachetools.func import ttl_cache
+from fp import K
 from maap.maap import MAAP
 from maap.Result import Collection, Granule
 from returns.curry import partial
@@ -14,8 +15,6 @@ from returns.maybe import Maybe, Nothing, Some, maybe
 from returns.pipeline import flow
 from returns.pointfree import bind, bind_ioresult, bind_result, lash, map_
 from returns.result import safe
-
-from fp import K
 
 if TYPE_CHECKING:
     from maap.AWS import AWSCredentials
