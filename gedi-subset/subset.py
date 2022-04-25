@@ -65,7 +65,7 @@ def cpu_count() -> int:
 
 
 @impure_safe
-def process_granule(props: ProcessGranuleProps) -> Maybe[str]:
+def process_granule(props: ProcessGranuleProps) -> IOResultE[Maybe[str]]:
     filter_cols = [
         "agbd",
         "agbd_se",
