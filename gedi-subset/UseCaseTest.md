@@ -239,7 +239,7 @@ seconds (~73 minutes).
 
 Running a DPS job to subset the entirety of Equatorial Guinea (GNQ_ADM0) using
 the default queue took 9 hours, but only 2 CPUs were available.  The resulting
-subset file is ~1.1GB, combined from 266 granule files.
+subset file is 1.1GB, combined from 266 granule files (~0.48 granule/min).
 
 It is unclear what the "default" queue is, but it provides 8GB of memory.
 
@@ -259,7 +259,7 @@ job_duration_seconds  32435.595898
 ```
 
 Choosing the 32GB queue, provided 4 CPUs, so the execution time was half of the
-above, at roughly 4.5 hours:
+above, at roughly 4.5 hours (~0.98 granule/min):
 
 - JobID: `36f902ca-54fe-4ca1-a6d1-8ebb97e65021`
 - aoi: <https://maap-ops-workspace.s3.amazonaws.com/shared/dschuck/iso3/GNQ-ADM0.geojson>
@@ -275,3 +275,27 @@ job_start_time        2022-04-18T21:42:35.633404Z
 job_end_time          2022-04-19T02:12:05.678511Z
 job_duration_seconds  16170.045107
 ```
+
+Choosing the 8GB queue, provided 16 CPUs, reducing the execution time to a bit
+under 1 hour (approx. 56m, or ~4.8 granules/min), which is _better_ than
+linear scalability relative to the previous 2 jobs:
+
+- JobID: `f75b5e3c-65f3-42a7-9cfb-a804fa25b827`
+- aoi: <https://maap-ops-workspace.s3.amazonaws.com/shared/dschuck/iso3/GNQ-ADM0.geojson>
+- limit: 2000
+
+```plain
+machine_type          c5.4xlarge
+architecture          x86_64
+machine_memory_size   30.36 GB
+directory_size        1511387136
+operating_system      CentOS
+job_start_time        2022-04-26T01:31:15.609852Z
+job_end_time          2022-04-26T02:27:35.695733Z
+job_duration_seconds  3380.085881
+```
+
+Oddly, this run indicated that 269 granule files were subsetted, not 266, so we
+need to investigate the difference, particularly since no additional logic,
+other than removing intermediate files (to avoid running out of disk space), was
+added for this last run.
