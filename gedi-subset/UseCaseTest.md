@@ -295,7 +295,6 @@ job_end_time          2022-04-26T02:27:35.695733Z
 job_duration_seconds  3380.085881
 ```
 
-Oddly, this run indicated that 269 granule files were subsetted, not 266, so we
-need to investigate the difference, particularly since no additional logic,
-other than removing intermediate files (to avoid running out of disk space), was
-added for this last run.
+This run indicated that 269 granule files were subsetted, not 266, indicating
+that perhaps a few new granules have been ingested since the previous jobs were
+executed.
