@@ -4,6 +4,7 @@
 - [Algorithm Inputs](#algorithm-inputs)
 - [Running a GEDI Subsetting DPS Job](#running-a-gedi-subsetting-dps-job)
 - [Getting the GeoJSON URL for a geoBoundary](#getting-the-geojson-url-for-a-geoboundary)
+- [Contributing](#contributing)
 - [Citations](#citations)
 
 ## Algorithm Outline
@@ -65,14 +66,13 @@ import uuid
 from maap.maap import MAAP
 
 maap = MAAP(maap_host='api.ops.maap-project.org')
-identifier = uuid.uuid4()
 aoi = "<AOI GeoJSON URL>"  # See previous section
 limit = 2000  # Maximum number of granule files to download
 
 result = maap.submitJob(
-    identifier=f"{identifier}",
+    identifier="<DESCRIPTION>",
     algo_id="gedi-subset_ubuntu",
-    version="main",
+    version="<VERSION>",
     queue="maap-dps-worker-8gb",
     username="<USERNAME>",  # Your Earthdata Login username
     aoi=aoi,
@@ -162,11 +162,40 @@ https://github.com/wmgeolab/geoBoundaries/raw/9f8c9e0f3aa13c5d07efaf10a829e3be02
 You may use this GeoJSON URL for the `aoi` input when running the GEDI
 subsetting DPS job.
 
+## Contributing
+
+To contribute to this work:
+
+1. Clone or fork this repository, and create a new branch based on an
+   appropriate existing branch (typically based on `main`)
+1. In addition to your desired code and/or configuration changes, update
+   `version` in `algorithm_config.yaml` according to the versioning
+   convention described in the [Changelog](./CHANGELOG.md)
+1. Submit a PR.
+1. _Only when_ the PR is against the `main` branch _and_ it has been approved
+   and merged:
+
+   1. Checkout and pull `main` to ensure you have the latest code from the
+      merged PR.
+   1. Create an _annotated_ tag with the same name as the new value of
+      `version` in `algorithm_config.yaml`.  For example:
+
+      ```bash
+      git tag -a <VERSION>
+      ```
+
+      where `<VERSION>` is the new value of `version` in
+      `algorithm_config.yaml`.  You may also add a message, using the `-m`
+      option, if you wish.
+
+1. Push the new tag.
+1. Register the new version of the algorithm.
+
 ## Citations
 
 Country Boundaries from:
 
-Runfola, D. et al. (2020) geoBoundaries: A global database of political administrative boundaries. PLoS ONE 15(4): e0231866. https://doi.org/10.1371/journal.pone.0231866
+Runfola, D. et al. (2020) geoBoundaries: A global database of political administrative boundaries. PLoS ONE 15(4): e0231866. <https://doi.org/10.1371/journal.pone.0231866>
 
 [geoBoundaries]:
     https://www.geoboundaries.org
