@@ -5,6 +5,9 @@
 - [Running a GEDI Subsetting DPS Job](#running-a-gedi-subsetting-dps-job)
 - [Getting the GeoJSON URL for a geoBoundary](#getting-the-geojson-url-for-a-geoboundary)
 - [Contributing](#contributing)
+  - [Repository Setup](#repository-setup)
+  - [Creating an Algorithm Release](#creating-an-algorithm-release)
+  - [Registering an Algorithm Release](#registering-an-algorithm-release)
 - [Citations](#citations)
 
 ## Algorithm Outline
@@ -164,32 +167,82 @@ subsetting DPS job.
 
 ## Contributing
 
-To contribute to this work:
+### Repository Setup
 
-1. Clone or fork this repository, and create a new branch based on an
-   appropriate existing branch (typically based on `main`)
-1. In addition to your desired code and/or configuration changes, update
-   `version` in `algorithm_config.yaml` according to the versioning
-   convention described in the [Changelog](./CHANGELOG.md)
-1. Submit a PR.
-1. _Only when_ the PR is against the `main` branch _and_ it has been approved
-   and merged:
+To contribute to this work, you must obtain access to the following:
 
-   1. Checkout and pull `main` to ensure you have the latest code from the
-      merged PR.
-   1. Create an _annotated_ tag with the same name as the new value of
-      `version` in `algorithm_config.yaml`.  For example:
+1. [MAAP Documentation Examples hosted on GitHub]: For creating new versions
+   (releases) of the algorithms implemented in the repository.
+1. [MAAP Documentation Examples hosted on GitLab]: A copy of the GitHub
+   repository, in order to enable registering new versions of the algorithms
+   from within the ADE (which currently only supports GitLab repositories).
+1. [NASA MAAP]: Where the ADE resides, and thus where algorithms can be
+   registered (from GitLab repositories).
 
-      ```bash
-      git tag -a <VERSION>
-      ```
+To prepare for contributing, do the following in an ADE workspace:
 
-      where `<VERSION>` is the new value of `version` in
-      `algorithm_config.yaml`.  You may also add a message, using the `-m`
-      option, if you wish.
+1. Clone the GitHub repository
+1. Add the GitLab repository as another remote (named `ade` here, but you may
+   specify a different name for the remote):
 
-1. Push the new tag.
-1. Register the new version of the algorithm.
+   ```bash
+   git remote add --tags -f ade https://repo.ops.maap-project.org/data-team/maap-documentation-examples.git
+   ```
+
+If you plan to do any development work outside of the ADE (such as on your
+local workstation), perform the steps above in that location as well.
+
+During development, you will create PRs against the GitHub repository, as
+explained below.
+
+### Creating an Algorithm Release
+
+1. Create a new branch based on an appropriate existing branch (typically based
+   on `main`).
+1. In addition to your desired code and/or configuration changes, do the
+   following:
+   1. Update `version` in `gedi-subset/algorithm_config.yaml` according to the
+      versioning convention referenced in the [Changelog](./CHANGELOG.md).
+   1. Add appropriate entries to the [Changelog](./CHANGELOG.md), according to
+      the Changelog convention referenced in the file.  In particular, you
+      should add a new section using the same version as specified in
+      `gedi-subset/algorithm_config.yaml`, with appropriate subsections.
+1. Submit a PR to the GitHub repository.
+1. _Only when_ the PR is on a branch to be merged into the `main` branch _and_
+   it has been approved and merged, create a new release in GitHub as follows:
+   1. Go to
+      <https://github.com/MAAP-Project/maap-documentation-examples/releases/new>
+   1. Click the **Choose a tag** dropdown.
+   1. In the input box that appears, enter the _same_ value as the new value of
+      `version` in `gedi-subset/algorithm_config.yml`, and click the **Create a
+      new tag** label that appears immediately below the input box.
+   1. In the **Release title** input, also enter the _same_ value as the new
+      value of `version` in `gedi-subset/algorithm_config.yml`.
+   1. In the description text box, copy and paste from the Changelog file only
+      the _new version section_ you added earlier to the Changelog.
+   1. Click the **Publish release** button.
+
+### Registering an Algorithm Release
+
+Once a release is published in the GitHub repository (see above), the code from
+the GitHub repository must be pushed to the GitLab repository in order to be
+able to register the new version of the algorithm, as follows, within the ADE:
+
+1. Pull the latest code from GitHub (to obtain merged PR, if necessary):
+
+   ```bash
+   git pull origin
+   ```
+
+1. Push the latest code to GitLab (replace `ade` with the appropriate remote
+   name, if you didn't use `ade` earlier):
+
+   ```bash
+   git push --all ade
+   ```
+
+1. From the menu **DPS/MAS Operations**, choose **Publish Algorithm**.
+1. Choose `gedi-subset_ubuntu:main` and click **Ok**.
 
 ## Citations
 
@@ -198,6 +251,12 @@ Country Boundaries from:
 Runfola, D. et al. (2020) geoBoundaries: A global database of political administrative boundaries. PLoS ONE 15(4): e0231866. <https://doi.org/10.1371/journal.pone.0231866>
 
 [geoBoundaries]:
-    https://www.geoboundaries.org
+  https://www.geoboundaries.org
 [geoBoundaries API]:
-    https://www.geoboundaries.org/api.html
+  https://www.geoboundaries.org/api.html
+[MAAP Documentation Examples hosted on GitHub]:
+  https://github.com/MAAP-Project/maap-documentation-examples.git
+[MAAP Documentation Examples hosted on GitLab]:
+  https://repo.ops.maap-project.org/data-team/maap-documentation-examples.git
+[NASA MAAP]:
+  https://ops.maap-project.org/
