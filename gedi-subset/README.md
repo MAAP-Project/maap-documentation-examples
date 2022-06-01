@@ -181,7 +181,8 @@ To contribute to this work, you must obtain access to the following:
 
 To prepare for contributing, do the following in an ADE workspace:
 
-1. Clone the GitHub repository
+1. Clone the GitHub repository.
+1. Change directory to the cloned repository.
 1. Add the GitLab repository as another remote (named `ade` here, but you may
    specify a different name for the remote):
 
@@ -228,10 +229,12 @@ Once a release is published in the GitHub repository (see above), the code from
 the GitHub repository must be pushed to the GitLab repository in order to be
 able to register the new version of the algorithm, as follows, within the ADE:
 
+1. Open a Terminal tab (if necessary) and change directory to the repository.
 1. Pull the latest code from GitHub (to obtain merged PR, if necessary):
 
    ```bash
    git pull origin
+   git checkout main
    ```
 
 1. Push the latest code to GitLab (replace `ade` with the appropriate remote
@@ -241,8 +244,20 @@ able to register the new version of the algorithm, as follows, within the ADE:
    git push --all ade
    ```
 
-1. From the menu **DPS/MAS Operations**, choose **Publish Algorithm**.
-1. Choose `gedi-subset_ubuntu:main` and click **Ok**.
+1. In the ADE's File Browser, navigate to
+   `maap-documentation-examples/gedi-subset`.
+1. Right-click on `algorithm_config.yaml` and choose **Register as MAS
+   Algorithm** from the context menu.
+1. Confirm that the value of the **version** field matches the GitHub release
+   version you created above.  If not, click **Cancel** and review earlier
+   steps.  If so, click **Ok**, which will trigger a build job that will take
+   several minutes.
+1. Check the build job status at
+   <https://repo.ops.maap-project.org/root/register-job/-/jobs>.  If the job
+   fails, you will need to correct the issue (and likely create a patch release,
+   following the release steps again).  Otherwise, you should now be able to
+   open the **DPS/MAS Operations** menu, choose **Execute DPS Job**, and find
+   the new version of the algorithm in the dropdown list for confirmation.
 
 ## Citations
 
