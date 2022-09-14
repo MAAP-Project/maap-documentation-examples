@@ -4,6 +4,7 @@ import os
 import os.path
 import warnings
 from typing import Any, Callable, Iterable, Mapping, TypeVar, Union
+from itertools import chain
 
 import h5py
 import numpy as np
@@ -344,9 +345,20 @@ def subset_hdf5(
     `"BEAM*"` groups.
     """
 
+    def datasets(group: h5py.Group) -> Iterable[h5py.Dataset]:
+        """Returns a flattened h5py.Group of one dimensional values"""
+        return chain.from_iterable(
+            datasets(value)
+            if isinstance(value, h5py.Group)
+            else [(name, value)]
+            if value.ndim == 1
+            else []
+            for name, value in group.items()
+        )
+
     def subset_beam(beam: h5py.Group) -> gpd.GeoDataFrame:
         """Subset an individual `"BEAM*"` group as described above."""
-        df_columns = (pd.Series(data, name=name) for name, data in beam.items())
+        df_columns = (pd.Series(data, name=name) for name, data in datasets(beam))
         df = pd.concat(df_columns, axis=1)
         # Keep only the rows matching the specified query
         df.query(query, inplace=True)
