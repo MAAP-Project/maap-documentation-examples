@@ -7,17 +7,14 @@ variation of [Semantic Versioning], with the following difference: each version
 is prefixed with `gedi-subset-` (e.g., `gedi-subset-0.1.0`) to allow for
 distinct lines of versioning of independent work in sibling directories.
 
-## [gedi-subset-0.2.6] - 2022-09-14
+## [gedi-subset-0.2.6] - 2022-09-15
 
 ### Fixed
 
-- Resolves error where subset_beam was trying to generate a Series on BEAM subgroup instead of a dataset.
-- `datasets` function to return a flattened h5py.Group of one dimensional values
-- Issue [#31](https://github.com/MAAP-Project/maap-documentation-examples/issues/31) Running the gedi_subset algorithm (version 0.2.5) raises the following error after downloading a file and attempting to subset it: OSError: Can't read data (no appropriate function for conversion path).
-
-### Changed
-
-- Updated unit tests to include tests for subgroups and multidimensional datasets.
+- Issue [#31](https://github.com/MAAP-Project/maap-documentation-examples/issues/31)
+  Running the gedi_subset algorithm (version 0.2.5) raises the following error
+  after downloading a file and attempting to subset it: OSError: Can't read data
+  (no appropriate function for conversion path).
 
 ## [Unreleased]
 
