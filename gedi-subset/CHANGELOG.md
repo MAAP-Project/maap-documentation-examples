@@ -7,6 +7,14 @@ variation of [Semantic Versioning], with the following difference: each version
 is prefixed with `gedi-subset-` (e.g., `gedi-subset-0.1.0`) to allow for
 distinct lines of versioning of independent work in sibling directories.
 
+## [gedi-subset-0.2.7] - 2022-09-16
+
+### Added
+
+- Issue [#16](https://github.com/MAAP-Project/maap-documentation-examples/issues/16)
+  Added `doi` to algorithm inputs. Users can either provide a specific `doi` or
+  specify a logical `doi` name (options are currently either `L4A` or `L2A`).
+
 ## [gedi-subset-0.2.6] - 2022-09-15
 
 ### Fixed

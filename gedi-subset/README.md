@@ -29,12 +29,13 @@ At a high level, the GEDI subsetting algorithm does the following:
 To run a GEDI subsetting DPS job, you must supply the following inputs:
 
 - `aoi` (**required**): URL to a GeoJSON file representing your area of interest
+- `doi` (**required**): Digital Object Identifier (DOI) of collection to subset
+  (https://www.doi.org/) Can be a specific DOI or a configured logical name
+  (currently either `L4A` or `L2A`).
 - `columns`: Comma-separated list of column names to include in output file.
-  (**Default:**
-  `agbd, agbd_se, l2_quality_flag, l4_quality_flag, sensitivity, sensitivity_a2`)
+  (**Default:** Dependent on the logical doi name)
 - `query`: Query expression for subsetting the rows in the output file.
-  (**Default:** `l2_quality_flag == 1 and l4_quality_flag == 1 and sensitivity >
-  0.95 and sensitivity_a2 > 0.95"`)
+  (**Default:** Dependent on the logical doi name)
 - `limit`: Maximum number of GEDI granule data files to download (among those
   that intersect the specified AOI).  (**Default:** 10,000)
 
