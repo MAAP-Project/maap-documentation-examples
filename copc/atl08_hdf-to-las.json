@@ -94,11 +94,7 @@
       "dimension":"Z"
     },
     {
-        "type" : "writers.copc",
-        "extra_dims": "all",
-        "pdal_metadata": true,
-        "minor_version": "4",
-        "a_srs": "EPSG:4326"
+        "type" : "writers.copc"
     }
   ]
 }
