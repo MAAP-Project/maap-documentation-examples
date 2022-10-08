@@ -5,33 +5,23 @@ set -xeuo pipefail
 basedir=$(dirname "$(readlink -f "$0")")
 
 # Make sure conda is updated to a version that supports the --no-capture-output option
-conda install -y -n base -c conda-forge "conda>=4.13.0"
+# and that conda-lock is installed so we can generate/update lock files.
+conda install -y -n base -c conda-forge "conda>=4.13.0" "conda-lock[pip_support]>=1.1.1"
 
 # Install dependencies from lock file for speed and reproducibility
-case $(uname) in
-Linux)
-    platform="linux"
-    ;;
-Darwin)
-    platform="osx"
-    ;;
-*)
-    echo >&2 "Unsupported platform: $(uname)"
-    exit 1
-    ;;
-esac
 
-conda create -y -n gedi_subset --file "${basedir}/environment/conda-${platform}-64.lock"
+if [[ "${1:-}" == "--dev" ]]; then
+    lockfile="${basedir}/environment/conda-lock-dev.yml"
+else
+    lockfile="${basedir}/environment/conda-lock.yml"
+fi
+
+conda-lock install -n gedi_subset "${lockfile}"
 
 # Install maap-py, since it cannot be specified in the lock file
 conda env update -n gedi_subset --file "${basedir}/environment/environment-maappy.yml"
 
-# Install development environment dependencies if the --dev flag is set
-# Running build.sh in gedi-subset directory with --dev
-if [[ "${1:-}" == "--dev" ]]; then
-    conda env update -n gedi_subset --file "${basedir}/environment/environment-dev.yml"
-fi
-
+# Install self as editable
 conda run --no-capture-output -n gedi_subset pip install -e "${basedir}"
 
 # Fail build if finicky mix of fiona and gdal isn't correct, so that we don't

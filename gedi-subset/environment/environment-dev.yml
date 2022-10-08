@@ -26,4 +26,4 @@ dependencies:
   - types-cachetools=5.2.1
   - types-requests=2.28.9
   - pip:
-    - filprofiler==2022.9.1
+    - filprofiler==2022.9.3
