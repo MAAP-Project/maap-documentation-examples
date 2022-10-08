@@ -13,3 +13,5 @@ dependencies:
   - pyarrow==8.0.0
   - shapely==1.8.2
   - pip
+  - pip:
+    - pfun=0.13.1

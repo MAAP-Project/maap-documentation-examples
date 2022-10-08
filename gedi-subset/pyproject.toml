@@ -20,6 +20,7 @@ mypy_path = ["./src", "./tests"]
 # This plugin generates many errors that appear to be false positives, so it is
 # commented out until further investigation can be conducted.
 # plugins = ["returns.contrib.mypy.returns_plugin"]
+plugins = ["pfun.mypy_plugin"]
 allow_redefinition = false
 check_untyped_defs = true
 ignore_errors = false
